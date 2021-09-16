@@ -90,7 +90,7 @@ do
     export CROSS_TOP="$DEVELOPER/Platforms/$PLATFORM.platform/Developer"
     export CROSS_SDK="$PLATFORM$SDK_VERSION.sdk"
     export SDKROOT="$CROSS_TOP/SDKs/$CROSS_SDK"
-    export CC="$CLANG -arch $ARCH"
+    export CC="$CLANG -arch $ARCH -target arm64-apple-ios14.0-simulator"
 
     CONF="$CONF -m$SDK_PLATFORM-version-min=$MIN_VERSION $EMBED_BITCODE"
 

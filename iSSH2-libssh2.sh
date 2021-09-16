@@ -63,18 +63,18 @@ do
     LOG="$PLATFORM_OUT/build-libssh2.log"
     touch $LOG
 
-    if [[ "$ARCH" == arm64* ]]; then
-      HOST="aarch64-apple-darwin"
-    else
-      HOST="$ARCH-apple-darwin"
-    fi
+    #if [[ "$ARCH" == arm64* ]]; then
+    #  HOST="aarch64-apple-darwin"
+    #else
+      HOST="arm-apple-macos11"
+    #fi
 
     export DEVROOT="$DEVELOPER/Platforms/$PLATFORM.platform/Developer"
     export SDKROOT="$DEVROOT/SDKs/$PLATFORM$SDK_VERSION.sdk"
     export CC="$CLANG"
     export CPP="$CLANG -E"
-    export CFLAGS="-arch $ARCH -pipe -no-cpp-precomp -isysroot $SDKROOT -m$SDK_PLATFORM-version-min=$MIN_VERSION $EMBED_BITCODE"
-    export CPPFLAGS="-arch $ARCH -pipe -no-cpp-precomp -isysroot $SDKROOT -m$SDK_PLATFORM-version-min=$MIN_VERSION"
+    export CFLAGS="-arch $ARCH -target arm64-apple-ios14.0-simulator -pipe -no-cpp-precomp -isysroot $SDKROOT -m$SDK_PLATFORM-version-min=$MIN_VERSION $EMBED_BITCODE"
+    export CPPFLAGS="-arch $ARCH -target arm64-apple-ios14.0-simulator -pipe -no-cpp-precomp -isysroot $SDKROOT -m$SDK_PLATFORM-version-min=$MIN_VERSION"
 
     if [[ $(./configure --help | grep -c -- --with-openssl) -eq 0 ]]; then
       CRYPTO_BACKEND_OPTION="--with-crypto=openssl"
@@ -82,7 +82,7 @@ do
       CRYPTO_BACKEND_OPTION="--with-openssl"
     fi
 
-    ./configure --host=$HOST --prefix="$PLATFORM_OUT" --disable-debug --disable-dependency-tracking --disable-silent-rules --disable-examples-build --with-libz $CRYPTO_BACKEND_OPTION --with-libssl-prefix="$OPENSSLDIR" --disable-shared --enable-static  >> "$LOG" 2>&1
+    ./configure --host="arm-apple-darwin20.6.0" --prefix="$PLATFORM_OUT" --disable-debug --disable-dependency-tracking --disable-silent-rules --disable-examples-build --with-libz $CRYPTO_BACKEND_OPTION --with-libssl-prefix="$OPENSSLDIR" --disable-shared --enable-static  >> "$LOG" 2>&1
 
     make >> "$LOG" 2>&1
     make -j "$BUILD_THREADS" install >> "$LOG" 2>&1
