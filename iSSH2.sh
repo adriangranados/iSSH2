@@ -320,6 +320,6 @@ if [[ $BUILD_PCAP == true ]]; then
   "$BASEPATH/iSSH2-libpcap.sh" || cleanupFail $CLEAN_BUILD
 fi
 
-if [[ $BUILD_SSL == true ]] || [[ $BUILD_SSH == true ]] || [[ $BUILD_PCAP == false ]]; then
+if [[ $BUILD_SSL == true ]] || [[ $BUILD_SSH == true ]] || [[ $BUILD_PCAP == true ]]; then
   cleanupAll $CLEAN_BUILD
 fi
