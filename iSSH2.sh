@@ -30,7 +30,7 @@ export SCRIPTNAME="iSSH2"
 cleanupFail () {
   if $1; then
     >&2 echo "Build failed, cleaning up temporary files..."
-    rm -rf "$LIBSSLDIR/src/" "$LIBSSLDIR/tmp/" "$LIBSSHDIR/src/" "$LIBSSHDIR/tmp/"
+    rm -rf "$LIBSSLDIR/src/" "$LIBSSLDIR/tmp/" "$LIBSSHDIR/src/" "$LIBSSHDIR/tmp/" "$LIBPCAPDIR/src/" "$LIBPCAPDIR/tmp/"
   else
     >&2 echo "Build failed, temporary files location: $TEMPPATH"
   fi
@@ -70,6 +70,18 @@ getOpensslVersion () {
   fi
 }
 
+getLibpcapVersion () {
+  if type git >/dev/null 2>&1; then
+    LIBPCAP_VERSION=`git ls-remote --tags https://github.com/the-tcpdump-group/libpcap.git | egrep "libpcap-[0-9]+(\.[0-9])*[a-zA-Z]?$" | cut -f 2 -d - | sort -t . -r | head -n 1`
+    LIBPCAP_AUTO=true
+  else
+    >&2 echo "Install git to automatically get the latest Libpcap version or use the --libpcap argument"
+    >&2 echo
+    >&2 echo "Try '$SCRIPTNAME --help' for more information."
+    exit 2
+  fi
+}
+
 getBuildSetting () {
   echo "${1}" | grep -i "^\s*${2}\s*=\s*" | cut -d= -f2 | xargs echo -n
 }
@@ -91,14 +103,16 @@ usageHelp () {
   echo "  -s, --sdk-version=VERS    use SDK version VERS"
   echo "  -l, --libssh2=VERS        download and build Libssh2 version VERS"
   echo "  -o, --openssl=VERS        download and build OpenSSL version VERS"
+  echo "  -c, --libpcap=VERS        download and build Libpcap version VERS"
   echo "  -x, --xcodeproj=PATH      get info from the project (requires TARGET)"
   echo "  -t, --target=TARGET       get info from the target (requires XCODEPROJ)"
-  echo "      --build-only-openssl  build OpenSSL and skip Libssh2"
+  echo "      --build-only-openssl  build OpenSSL and skip others"
+  echo "      --build-only-libpcap  build Libpcap and skip others"
   echo "      --no-clean            do not clean build folder"
   echo "      --no-bitcode          don't embed bitcode"
   echo "  -h, --help                display this help and exit"
   echo
-  echo "Valid platforms: iphoneos, macosx, appletvos, watchos"
+  echo "Valid platforms: macosx, iphoneos, iphonesimulator"
   echo
   echo "Xcodeproj and target or platform and min version must be set."
   echo
@@ -110,6 +124,7 @@ usageHelp () {
 export SDK_VERSION=
 export LIBSSH_VERSION=
 export LIBSSL_VERSION=
+export LIBPCAP_VERSION=
 export MIN_VERSION=
 export ARCHS=
 export SDK_PLATFORM=
@@ -118,6 +133,7 @@ export EMBED_BITCODE="-fembed-bitcode"
 BUILD_OSX=false
 BUILD_SSL=true
 BUILD_SSH=true
+BUILD_PCAP=true
 CLEAN_BUILD=true
 
 XCODE_PROJECT=
@@ -131,6 +147,7 @@ while getopts 'a:p:l:o:v:s:x:t:h-' OPTION ; do
     s) SDK_VERSION="$OPTARG" ;;
     l) LIBSSH_VERSION="$OPTARG" ;;
     o) LIBSSL_VERSION="$OPTARG" ;;
+    c) LIBPCAP_VERSION="$OPTARG" ;;
     x) XCODE_PROJECT="$OPTARG" ;;
     t) TARGET_NAME="$OPTARG" ;;
     h) usageHelp ;;
@@ -142,12 +159,14 @@ while getopts 'a:p:l:o:v:s:x:t:h-' OPTION ; do
          --platform) SDK_PLATFORM="$OPTARG" ;;
          --openssl) LIBSSL_VERSION="$OPTARG" ;;
          --libssh2) LIBSSH_VERSION="$OPTARG" ;;
+         --libpcap) LIBPCAP_VERSION="$OPTARG" ;;
          --sdk-version) SDK_VERSION="$OPTARG" ;;
          --min-version) MIN_VERSION="$OPTARG" ;;
          --xcodeproj) XCODE_PROJECT="$OPTARG" ;;
          --target) TARGET_NAME="$OPTARG" ;;
-         --build-only-openssl) BUILD_SSH=false ;;
-         --only-print-env) BUILD_SSL=false; BUILD_SSH=false ;;
+         --build-only-openssl) BUILD_SSH=false; BUILD_PCAP=false ;;
+         --build-only-libpcap) BUILD_SSL=false; BUILD_SSH=false ;;
+         --only-print-env) BUILD_SSL=false; BUILD_SSH=false; BUILD_PCAP=false ;;
          --osx) BUILD_OSX=true ;;
          --no-bitcode) EMBED_BITCODE="" ;;
          --no-clean) CLEAN_BUILD=false ;;
@@ -193,46 +212,21 @@ if [[ -z "$MIN_VERSION" ]]; then
   exit 1
 fi
 
-if [[  "$SDK_PLATFORM" == "macosx" ]] || [[ "$SDK_PLATFORM" == "iphoneos" ]] || [[ "$SDK_PLATFORM" == "appletvos" ]] || [[ "$SDK_PLATFORM" == "watchos" ]]; then
+if [[  "$SDK_PLATFORM" == "macosx" ]] || [[ "$SDK_PLATFORM" == "iphoneos" ]] || [[ "$SDK_PLATFORM" == "iphonesimulator" ]]; then
   if [[ -z "$ARCHS" ]]; then
     ARCHS="$TARGET_ARCHS"
 
     if [[ "$SDK_PLATFORM" == "macosx" ]]; then
       if [[ -z "$ARCHS" ]]; then
         ARCHS="x86_64"
-
-        if [[ $(version "$XCODE_VERSION") < $(version "10.0") ]]; then
-          ARCHS="$ARCHS i386"
-        fi
       fi
     elif [[ "$SDK_PLATFORM" == "iphoneos" ]]; then
       if [[ -z "$ARCHS" ]]; then
         ARCHS="arm64"
-
-        if [[ $(version "$XCODE_VERSION") == $(version "10.1") ]] || [[ $(version "$XCODE_VERSION") > $(version "10.1") ]]; then
-          ARCHS="$ARCHS arm64e"
-        fi
-
-        if [[ $(version "$MIN_VERSION") < $(version "10.0") ]]; then
-          ARCHS="$ARCHS armv7 armv7s"
-        fi
-        if [[ $(version "$XCODE_VERSION") -ge $(version "12.0") ]]; then
-          ARCHS="$ARCHS arm64"
-        fi
       fi
-
-      ARCHS="$ARCHS x86_64"
-
-      if [[ $(version "$MIN_VERSION") < $(version "10.0") ]]; then
-        ARCHS="$ARCHS i386"
-      fi
-    elif [[ "$SDK_PLATFORM" == "appletvos" ]]; then
-      ARCHS="$ARCHS arm64 x86_64"
-    elif [[ "$SDK_PLATFORM" == "watchos" ]]; then
-      ARCHS="$ARCHS i386 armv7k"
-
-      if [[ $(version "$XCODE_VERSION") == $(version "10.0") ]] || [[ $(version "$XCODE_VERSION") > $(version "10.0") ]]; then
-        ARCHS="$ARCHS arm64_32"
+    elif [[ "$SDK_PLATFORM" == "iphonesimulator" ]]; then
+      if [[ -z "$ARCHS" ]]; then
+        ARCHS="arm64 x86_64"
       fi
     fi
   fi
@@ -254,6 +248,11 @@ if [[ -z "$LIBSSL_VERSION" ]]; then
   getOpensslVersion
 fi
 
+LIBPCAP_AUTO=false
+if [[ -z "$LIBPCAP_VERSION" ]]; then
+  getLibpcapVersion
+fi
+
 SDK_AUTO=false
 if [[ -z "$SDK_VERSION" ]]; then
    SDK_VERSION=`xcrun --sdk $SDK_PLATFORM --show-sdk-version`
@@ -270,6 +269,7 @@ export BASEPATH="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 export TEMPPATH="$TMPDIR$SCRIPTNAME"
 export LIBSSLDIR="$TEMPPATH/openssl-$LIBSSL_VERSION"
 export LIBSSHDIR="$TEMPPATH/libssh2-$LIBSSH_VERSION"
+export LIBPCAPDIR="$TEMPPATH/libpcap-$LIBPCAP_VERSION"
 
 #Env
 
@@ -284,6 +284,12 @@ if [[ $LIBSSL_AUTO == true ]]; then
   echo "OpenSSL version: $LIBSSL_VERSION (Automatically detected)"
 else
   echo "OpenSSL version: $LIBSSL_VERSION"
+fi
+
+if [[ $LIBPCAP_AUTO == true ]]; then
+  echo "Libpcap version: $LIBPCAP_VERSION (Automatically detected)"
+else
+  echo "Libpcap version: $LIBPCAP_VERSION"
 fi
 
 if [[ $SDK_AUTO == true ]]; then
@@ -310,6 +316,10 @@ if [[ $BUILD_SSH == true ]]; then
   "$BASEPATH/iSSH2-libssh2.sh" || cleanupFail $CLEAN_BUILD
 fi
 
-if [[ $BUILD_SSL == true ]] || [[ $BUILD_SSH == true ]]; then
+if [[ $BUILD_PCAP == true ]]; then
+  "$BASEPATH/iSSH2-libpcap.sh" || cleanupFail $CLEAN_BUILD
+fi
+
+if [[ $BUILD_SSL == true ]] || [[ $BUILD_SSH == true ]] || [[ $BUILD_PCAP == false ]]; then
   cleanupAll $CLEAN_BUILD
 fi
